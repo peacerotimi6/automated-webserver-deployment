@@ -1,13 +1,66 @@
----
-- name: Configure webserver
+- name: Setup Docker and deploy Node.js app
   hosts: webservers
   become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
   tasks:
-    - name: Install Docker
-      apt:
-        name: docker.io
+    - name: Verify python3 path
+      command: /usr/bin/python3 --version
+      register: py_version
+      ignore_errors: yes
+
+    - debug:
+        var: py_version.stdout
+
+    - name: Gather OS info
+      ansible.builtin.setup:
+        gather_subset:
+          - os_family
+          - distribution
+          - distribution_version
+
+    - name: Show distribution facts
+      debug:
+        msg:
+          distribution: "{{ ansible_facts['distribution'] }}"
+          distribution_version: "{{ ansible_facts['distribution_version'] }}"
+          os_family: "{{ ansible_facts['os_family'] }}"
+
+    - name: Install python3 and pip packages on Amazon Linux 2
+      package:
+        name:
+          - python3
+          - python3-pip
         state: present
-        update_cache: yes
+      when: ansible_facts['distribution'] == "Amazon" and ansible_facts['distribution_version'] == "2"
+
+    - name: Install python3 and pip packages on other RedHat-based systems (yum)
+      yum:
+        name:
+          - python3
+          - python3-pip
+        state: present
+        use_backend: yum 
+      when: ansible_facts['os_family'] == "RedHat" and ansible_facts['distribution'] != "Amazon"
+
+    - name: Create Python 3 virtual environment
+      command: python3 -m venv /home/ec2-user/ansible-venv
+      args:
+        creates: /home/ec2-user/ansible-venv/bin/activate
+
+    - name: Remove docker-ce repo file if exists
+      file:
+        path: /etc/yum.repos.d/docker-ce.repo
+        state: absent
+
+    - name: Clean yum cache
+      command: yum clean all
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Install Docker using amazon-linux-extras
+      command: amazon-linux-extras install docker -y
+      when: ansible_facts['distribution'] == "Amazon"
 
     - name: Start Docker service
       service:
@@ -15,21 +68,26 @@
         state: started
         enabled: yes
 
-    - name: Copy app directory to server
-      copy:
-        src: ../app/
-        dest: /home/ubuntu/app
-        mode: '0755'
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
 
-    - name: Build and run Docker container
-      command: docker build -t webapp /home/ubuntu/app
-      args:
-        creates: /home/ubuntu/app/Dockerfile
+    - name: Install python3-requests for Ansible docker modules
+      pip:
+        name: requests
+        executable: /usr/bin/pip3
 
-    - name: Run container if not running
+    - name: Pull Node.js app Docker image
+      docker_image:
+        name: peacerotimi6/workwave2:latest
+        source: pull
+
+    - name: Run Node.js app container
       docker_container:
-        name: webapp
-        image: webapp
+        name: nodeapp_container
+        image: peacerotimi6/workwave2:latest
         state: started
         restart_policy: always
         ports:
