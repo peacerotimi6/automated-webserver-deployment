@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Docker
+docker-compose.override.yml
+*.log
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Ansible
+*.retry
+
+# Ignore keys and sensitive files
+*.pem
+*.key
+
+# Archives and large files
+*.iso
+*.zip
+*.tar.gz

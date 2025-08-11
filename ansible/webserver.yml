@@ -1,0 +1,36 @@
+---
+- name: Configure webserver
+  hosts: webservers
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Copy app directory to server
+      copy:
+        src: ../app/
+        dest: /home/ubuntu/app
+        mode: '0755'
+
+    - name: Build and run Docker container
+      command: docker build -t webapp /home/ubuntu/app
+      args:
+        creates: /home/ubuntu/app/Dockerfile
+
+    - name: Run container if not running
+      docker_container:
+        name: webapp
+        image: webapp
+        state: started
+        restart_policy: always
+        ports:
+          - "80:5000"
